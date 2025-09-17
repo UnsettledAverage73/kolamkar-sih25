@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 
 interface KolamCanvasProps {
-  parameters?: {
+  parameters: {
     gridType: string
     rows: number
     columns: number
@@ -12,19 +12,16 @@ interface KolamCanvasProps {
     symmetryType: string
     iterations: number
   }
-  kolamImageBase64?: string // New prop for base64 image
+  kolamSvg: string | null; // Changed to explicitly allow null
 }
 
-export function KolamCanvas({ parameters, kolamImageBase64 }: KolamCanvasProps) {
-  if (kolamImageBase64) {
+export function KolamCanvas({ parameters, kolamSvg }: KolamCanvasProps) {
+  if (kolamSvg) {
     return (
-      <div className="aspect-square bg-white rounded-lg border border-border p-4 flex items-center justify-center">
-        <img
-          src={`data:image/png;base64,${kolamImageBase64}`}
-          alt="Generated Kolam"
-          className="max-w-full max-h-full object-contain"
-        />
-      </div>
+      <div
+        className="aspect-square bg-white rounded-lg border border-border p-4 flex items-center justify-center"
+        dangerouslySetInnerHTML={{ __html: kolamSvg }}
+      />
     )
   }
   

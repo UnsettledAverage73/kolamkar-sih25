@@ -19,7 +19,7 @@ export function GenerateWithInputs() {
     symmetryType: "4-fold",
     iterations: 1,
   })
-  const [kolamImageBase64, setKolamImageBase64] = useState<string | null>(null)
+  const [kolamSvg, setKolamSvg] = useState<string | null>(null) // Changed from kolamImageBase64
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -31,7 +31,7 @@ export function GenerateWithInputs() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch("http://127.0.0.1:5000/generate-kolam", {
+      const response = await fetch("https://kolamkar-s-1.onrender.com/generate-kolam-svg", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -40,15 +40,13 @@ export function GenerateWithInputs() {
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`HTTP error! status: ${response.status}. Details: ${errorText}`)
       }
 
-      const data = await response.json()
-      if (data.image) {
-        setKolamImageBase64(data.image)
-      } else if (data.error) {
-        setError(data.error)
-      }
+      const svgData = await response.text() 
+      setKolamSvg(svgData)
+
     } catch (e: any) {
       setError(e.message)
     } finally {
@@ -188,7 +186,7 @@ export function GenerateWithInputs() {
           <CardDescription>Your Kolam pattern will appear here</CardDescription>
         </CardHeader>
         <CardContent>
-          <KolamCanvas parameters={parameters} kolamImageBase64={kolamImageBase64} />
+          <KolamCanvas parameters={parameters} kolamSvg={kolamSvg} />
 
           {/* Action Buttons */}
           <div className="mt-6 flex flex-wrap gap-3">

@@ -112,6 +112,6 @@ while True:
 
 # Release the video stream
 cv2.destroyAllWindows()
-
+    
 
 

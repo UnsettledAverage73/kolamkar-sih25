@@ -67,7 +67,7 @@ def generate_kolam_image(axiom, rules, angle, dot_size, iterations):
     png_buffer.seek(0)
     
     # Clean up turtle environment
-    screen.bye()
+    # screen.bye()
     
     return png_buffer.getvalue()
 
