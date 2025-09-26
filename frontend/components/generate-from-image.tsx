@@ -1,8 +1,7 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useCallback } from "react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { KolamCanvas } from "@/components/kolam-canvas"
@@ -10,7 +9,8 @@ import { KolamCanvas } from "@/components/kolam-canvas"
 export function GenerateFromImage() {
   const [uploadedImage, setUploadedImage] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
-  const [generatedDesign, setGeneratedDesign] = useState(false)
+  const [generatedKolamSvg, setGeneratedKolamSvg] = useState<string | null>(null) // New state for generated SVG
+  const [error, setError] = useState<string | null>(null)
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -41,10 +41,37 @@ export function GenerateFromImage() {
 
   const processImage = async () => {
     setIsProcessing(true)
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setGeneratedDesign(true)
-    setIsProcessing(false)
+    setGeneratedKolamSvg(null)
+    setError(null)
+
+    if (!uploadedImage) {
+      setError("Please upload an image first.")
+      setIsProcessing(false)
+      return
+    }
+
+    try {
+      const response = await fetch("https://kolamkar-s-1.onrender.com/generate-from-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ image: uploadedImage }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP error! status: ${response.status}. Details: ${errorText}`)
+      }
+
+      const svgData = await response.text()
+      setGeneratedKolamSvg(svgData)
+
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setIsProcessing(false)
+    }
   }
 
   return (
@@ -157,21 +184,36 @@ export function GenerateFromImage() {
           <CardDescription>Your digitized Kolam pattern will appear here</CardDescription>
         </CardHeader>
         <CardContent>
-          {generatedDesign ? (
-            <>
-              <KolamCanvas
-                parameters={{
-                  gridType: "square",
-                  rows: 6,
-                  columns: 6,
-                  dotSpacing: 25,
-                  strokeType: "continuous",
-                  symmetryType: "4-fold",
-                  iterations: 1,
-                }}
-              />
+          {generatedKolamSvg ? (
+            <KolamCanvas kolamSvg={generatedKolamSvg} parameters={{
+              gridType: "square", // These parameters are placeholders when generating from image
+              rows: 6,
+              columns: 6,
+              dotSpacing: 25,
+              strokeType: "continuous",
+              symmetryType: "4-fold",
+              iterations: 1,
+            }} />
+          ) : (
+            <div className="aspect-square bg-muted rounded-lg flex items-center justify-center">
+              <div className="text-center text-muted-foreground">
+                <svg className="mx-auto h-12 w-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1}
+                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+                  />
+                </svg>
+                <p>Upload an image to generate your Kolam design</p>
+              </div>
+            </div>
+          )}
 
-              {/* Action Buttons */}
+          {error && <p className="text-red-500 text-sm mt-2">Error: {error}</p>}
+
+          {generatedKolamSvg && (
+            <>              {/* Action Buttons */}
               <div className="mt-6 flex flex-wrap gap-3">
                 <Button className="flex-1 sm:flex-none">
                   <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -199,7 +241,7 @@ export function GenerateFromImage() {
                   <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
-                      strokeLinejoin="round"
+                      strokeLinejoin="round" 
                       strokeWidth={2}
                       d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                     />
@@ -224,20 +266,6 @@ export function GenerateFromImage() {
                 </Button>
               </div>
             </>
-          ) : (
-            <div className="aspect-square bg-muted rounded-lg flex items-center justify-center">
-              <div className="text-center text-muted-foreground">
-                <svg className="mx-auto h-12 w-12 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1}
-                    d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-                  />
-                </svg>
-                <p>Upload an image to generate your Kolam design</p>
-              </div>
-            </div>
           )}
         </CardContent>
       </Card>

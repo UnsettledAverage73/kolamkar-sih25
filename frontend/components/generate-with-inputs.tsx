@@ -18,7 +18,14 @@ export function GenerateWithInputs() {
     strokeType: "continuous",
     symmetryType: "4-fold",
     iterations: 1,
+    rhombus_size: 5, // Initialize rhombus_size
+    grid_size: 8, // Initialize grid_size
+    polygon1_sides: 6, // Initialize polygon1_sides
+    polygon1_radius: 3, // Initialize polygon1_radius
+    polygon2_sides: 8, // Initialize polygon2_sides
+    polygon2_radius: 2, // Initialize polygon2_radius
   })
+  const [designType, setDesignType] = useState("lsystem")
   const [kolamSvg, setKolamSvg] = useState<string | null>(null) // Changed from kolamImageBase64
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
@@ -31,12 +38,12 @@ export function GenerateWithInputs() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch("https://kolamkar-s-1.onrender.com/generate-kolam-svg", {
+      const response = await fetch("http://localhost:8000/generate-kolam", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(parameters),
+        body: JSON.stringify({ ...parameters, design_type: designType }),
       })
 
       if (!response.ok) {
@@ -68,6 +75,97 @@ export function GenerateWithInputs() {
           <CardDescription>Adjust the settings below to customize your Kolam design</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Design Type */}
+          <div className="space-y-2">
+            <Label htmlFor="design-type">Design Type</Label>
+            <Select value={designType} onValueChange={(value) => setDesignType(value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select design type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="lsystem">L-System Kolam</SelectItem>
+                <SelectItem value="suzhi">Suzhi Kolam</SelectItem>
+                <SelectItem value="kambi">Kambi Kolam</SelectItem>
+                <SelectItem value="grouptheory">Group Theory Kolam</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {designType === "kambi" && (
+            <div className="space-y-2">
+              <Label htmlFor="rhombus-size">Rhombus Size</Label>
+              <Input
+                id="rhombus-size"
+                type="number"
+                min="1"
+                max="10"
+                value={parameters.rhombus_size}
+                onChange={(e) => handleParameterChange("rhombus_size", Number.parseInt(e.target.value))}
+              />
+            </div>
+          )}
+
+          {designType === "grouptheory" && (
+            <div className="space-y-4">
+              <h4 className="font-medium text-card-foreground mt-4">Group Theory Parameters</h4>
+              <div className="space-y-2">
+                <Label htmlFor="grid-size">Grid Size</Label>
+                <Input
+                  id="grid-size"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={parameters.grid_size}
+                  onChange={(e) => handleParameterChange("grid_size", Number.parseInt(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="polygon1-sides">Polygon 1 Sides</Label>
+                <Input
+                  id="polygon1-sides"
+                  type="number"
+                  min="3"
+                  max="10"
+                  value={parameters.polygon1_sides}
+                  onChange={(e) => handleParameterChange("polygon1_sides", Number.parseInt(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="polygon1-radius">Polygon 1 Radius</Label>
+                <Input
+                  id="polygon1-radius"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={parameters.polygon1_radius}
+                  onChange={(e) => handleParameterChange("polygon1_radius", Number.parseInt(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="polygon2-sides">Polygon 2 Sides</Label>
+                <Input
+                  id="polygon2-sides"
+                  type="number"
+                  min="3"
+                  max="10"
+                  value={parameters.polygon2_sides}
+                  onChange={(e) => handleParameterChange("polygon2_sides", Number.parseInt(e.target.value))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="polygon2-radius">Polygon 2 Radius</Label>
+                <Input
+                  id="polygon2-radius"
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={parameters.polygon2_radius}
+                  onChange={(e) => handleParameterChange("polygon2_radius", Number.parseInt(e.target.value))}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Grid Type */}
           <div className="space-y-2">
             <Label htmlFor="grid-type">Grid Type</Label>

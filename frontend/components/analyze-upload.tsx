@@ -1,8 +1,7 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useCallback } from "react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +27,7 @@ export function AnalyzeUpload() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [analysisProgress, setAnalysisProgress] = useState(0)
+  const [error, setError] = useState<string | null>(null)
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -61,6 +61,14 @@ export function AnalyzeUpload() {
   const analyzeImage = async () => {
     setIsAnalyzing(true)
     setAnalysisProgress(0)
+    setAnalysisResult(null)
+    setError(null)
+
+    if (!uploadedImage) {
+      setError("Please upload an image first.")
+      setIsAnalyzing(false)
+      return
+    }
 
     // Simulate analysis progress
     const progressSteps = [
@@ -72,35 +80,32 @@ export function AnalyzeUpload() {
     ]
 
     for (const { step } of progressSteps) {
-      await new Promise((resolve) => setTimeout(resolve, 800))
+      await new Promise((resolve) => setTimeout(resolve, 300)) // Reduced timeout for quicker simulation
       setAnalysisProgress(step)
     }
 
-    // Mock analysis result
-    setAnalysisResult({
-      symmetryType: "4-fold Rotational Symmetry",
-      rotationPatterns: ["90° rotation", "180° rotation", "270° rotation", "360° rotation"],
-      gridSystem: "Square Grid (8x8)",
-      complexity: "Intermediate",
-      specifications: {
-        dimensions: "240 x 240 pixels",
-        dotCount: 64,
-        lineLength: "1,240 pixels total",
-        strokeWidth: "2-3 pixels",
-      },
-      algorithm: [
-        "1. Establish 8x8 dot grid with 30px spacing",
-        "2. Start from center point (4,4)",
-        "3. Draw primary symmetry axes",
-        "4. Create connecting loops around dots",
-        "5. Apply 4-fold rotational symmetry",
-        "6. Ensure continuous line path",
-      ],
-      culturalSignificance:
-        "This pattern represents prosperity and protection, commonly drawn during festival seasons. The 4-fold symmetry symbolizes the four directions and cosmic balance.",
-    })
+    try {
+      const response = await fetch("https://kolamkar-s-1.onrender.com/analyze-kolam-image", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ image: uploadedImage }),
+      })
 
-    setIsAnalyzing(false)
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP error! status: ${response.status}. Details: ${errorText}`)
+      }
+
+      const result: AnalysisResult = await response.json()
+      setAnalysisResult(result)
+
+    } catch (e: any) {
+      setError(e.message)
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   return (
@@ -198,6 +203,8 @@ export function AnalyzeUpload() {
               <p className="text-sm text-muted-foreground text-center">{analysisProgress}% complete</p>
             </div>
           )}
+
+          {error && <p className="text-red-500 text-sm mt-2">Error: {error}</p>}
 
           {/* Upload Tips */}
           <div className="bg-card rounded-lg p-4">
