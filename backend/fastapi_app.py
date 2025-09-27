@@ -4,13 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import svgwrite
 import math
-import os # Added for os.path
-from tensorflow.keras.models import load_model # Import load_model
-from ml.data_loader import load_kolam_data, MultiLabelBinarizer # Import load_kolam_data and MultiLabelBinarizer
-import numpy as np
-from PIL import Image
-import base64
-import io
 
 app = FastAPI()
 
@@ -22,36 +15,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Load the trained analysis model and label binarizer at startup
-ml_model = None
-mlb_analysis_labels = None
-
-@app.on_event("startup")
-async def startup_event():
-    global ml_model, mlb_analysis_labels
-    print("Loading ML model and label binarizer...")
-    try:
-        # First, ensure that dummy images are available or handle remote download
-        # For now, we'll create dummy images if not present to allow data_loader to run
-        if not os.path.exists('ml/kolam_images'):
-            os.makedirs('ml/kolam_images')
-        if not os.path.exists('ml/kolam_images/k001.jpg'): # Create a dummy image if needed
-            dummy_img_array = np.zeros((256, 256, 3), dtype=np.uint8)
-            dummy_img = Image.fromarray(dummy_img_array)
-            dummy_img.save('ml/kolam_images/k001.jpg')
-        
-        # Load dummy data to get the MultiLabelBinarizer fitted
-        # This is a temporary hack because load_kolam_data expects to find images
-        _, _, _, mlb_analysis_labels = load_kolam_data('combined_data.csv')
-        
-        # Load the actual trained model
-        ml_model = load_model('ml/kolam_analysis_model.h5')
-        print("ML model and label binarizer loaded successfully.")
-    except Exception as e:
-        print(f"Error loading ML model or label binarizer: {e}")
-        ml_model = None
-        mlb_analysis_labels = None
 
 class KolamParameters(BaseModel):
     design_type: str = "lsystem"
@@ -318,79 +281,6 @@ def generate_grouptheory_kolam_svg(params: KolamParameters):
 
     return dwg.tostring()
 
-@app.post("/analyze-kolam-image")
-async def analyze_kolam_image(request: ImageProcessRequest):
-    global ml_model, mlb_analysis_labels
-    if ml_model is None or mlb_analysis_labels is None:
-        return Response(content="ML model not loaded. Please check backend logs.", media_type="text/plain", status_code=500)
-
-    try:
-        # Decode base64 image
-        image_data = base64.b64decode(request.image.split(',')[1])
-        image = Image.open(io.BytesIO(image_data)).convert('RGB')
-        
-        # Preprocess image for the model
-        image = image.resize((256, 256)) # Resize to model's input shape
-        image_array = np.array(image) / 255.0 # Normalize pixel values
-        image_array = np.expand_dims(image_array, axis=0) # Add batch dimension
-
-        # Make prediction
-        predictions = ml_model.predict(image_array)
-        predicted_labels_encoded = (predictions > 0.5).astype(int) # Apply threshold
-        predicted_labels_raw = mlb_analysis_labels.inverse_transform(predicted_labels_encoded)
-        
-        # Convert predicted labels to AnalysisResult format
-        # This part requires mapping the generic ML labels to the specific AnalysisResult structure
-        # For simplicity, I'll create a basic mapping. This would be refined based on actual label schema.
-        
-        # Example mapping (you'll need to refine this based on your actual `all_labels` in data_loader.py)
-        symmetry_type = "Unknown Symmetry"
-        rotation_patterns = []
-        grid_system = "Unknown Grid"
-        complexity = "Unknown Complexity"
-        style_name = "Unknown Style"
-        
-        for label_list in predicted_labels_raw:
-            for label in label_list:
-                if "Rotational" in label or "reflection" in label:
-                    if symmetry_type == "Unknown Symmetry": # Only assign once if multiple symmetry labels
-                        symmetry_type = label # Take the first one
-                    rotation_patterns.append(label)
-                elif "grid" in label:
-                    grid_system = label
-                elif label in ["Sikku", "Pulli", "geometric", "floral", "lsystem", "suzhi", "kambi", "grouptheory"]:
-                    style_name = label
-                # Add more logic for complexity, specifications etc. based on your label scheme
-
-        analysis_result = {
-            "symmetryType": symmetry_type,
-            "rotationPatterns": rotation_patterns if rotation_patterns else ["No specific rotational pattern detected"],
-            "gridSystem": grid_system,
-            "complexity": complexity, # This needs a proper mapping from ML labels
-            "specifications": {
-                "dimensions": "N/A",
-                "dotCount": 0,
-                "lineLength": "N/A",
-                "strokeWidth": "N/A",
-            },
-            "algorithm": [f"Predicted Style: {style_name}"],
-            "culturalSignificance": "Analysis based on AI prediction.",
-        }
-
-        return analysis_result
-    except Exception as e:
-        import traceback
-        return Response(content=f"Error during image analysis: {e}\n{traceback.format_exc()}", media_type="text/plain", status_code=500)
-
-@app.options("/analyze-kolam-image")
-async def options_analyze_kolam_image():
-    return Response(status_code=200, headers={
-        "Access-Control-Allow-Origin": "http://localhost:3000",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Max-Age": "86400" # Cache preflight response for 24 hours
-    })
-
 @app.post("/generate-from-image")
 async def generate_kolam_from_image(request: ImageProcessRequest):
     try:
@@ -413,6 +303,47 @@ async def generate_kolam_from_image(request: ImageProcessRequest):
 
 @app.options("/generate-from-image")
 async def options_generate_kolam_from_image():
+    return Response(status_code=200, headers={
+        "Access-Control-Allow-Origin": "http://localhost:3000",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Max-Age": "86400" # Cache preflight response for 24 hours
+    })
+
+@app.post("/analyze-kolam-image")
+async def analyze_kolam_image(request: ImageProcessRequest):
+    try:
+        # Here you would integrate your actual image analysis logic.
+        # For now, return mock analysis results.
+        mock_analysis_result = {
+            "symmetryType": "4-fold Rotational Symmetry",
+            "rotationPatterns": ["90° rotation", "180° rotation", "270° rotation", "360° rotation"],
+            "gridSystem": "Square Grid (8x8)",
+            "complexity": "Intermediate",
+            "specifications": {
+                "dimensions": "240 x 240 pixels",
+                "dotCount": 64,
+                "lineLength": "1,240 pixels total",
+                "strokeWidth": "2-3 pixels",
+            },
+            "algorithm": [
+                "1. Establish 8x8 dot grid with 30px spacing",
+                "2. Start from center point (4,4)",
+                "3. Draw primary symmetry axes",
+                "4. Create connecting loops around dots",
+                "5. Apply 4-fold rotational symmetry",
+                "6. Ensure continuous line path",
+            ],
+            "culturalSignificance":
+                "This pattern represents prosperity and protection, commonly drawn during festival seasons. The 4-fold symmetry symbolizes the four directions and cosmic balance.",
+        }
+        return mock_analysis_result
+    except Exception as e:
+        import traceback
+        return Response(content=f"Error: {e}\n{traceback.format_exc()}", media_type="text/plain", status_code=500)
+
+@app.options("/analyze-kolam-image")
+async def options_analyze_kolam_image():
     return Response(status_code=200, headers={
         "Access-Control-Allow-Origin": "http://localhost:3000",
         "Access-Control-Allow-Methods": "POST, OPTIONS",

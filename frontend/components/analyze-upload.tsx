@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { useRouter } from "next/navigation" // Import useRouter
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,6 +29,114 @@ export function AnalyzeUpload() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
   const [analysisProgress, setAnalysisProgress] = useState(0)
   const [error, setError] = useState<string | null>(null)
+
+  // Function to handle downloading the analysis report
+  const handleDownloadReport = useCallback(() => {
+    if (analysisResult) {
+      const reportContent = JSON.stringify(analysisResult, null, 2);
+      const blob = new Blob([reportContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'kolam_analysis_report.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }, [analysisResult]);
+
+  // Function to handle sharing the analysis (copy to clipboard)
+  const handleShareAnalysis = useCallback(async () => {
+    if (analysisResult) {
+      const reportContent = JSON.stringify(analysisResult, null, 2);
+      try {
+        await navigator.clipboard.writeText(reportContent);
+        alert("Analysis results copied to clipboard!"); // Simple feedback
+      } catch (err) {
+        console.error("Failed to copy analysis results: ", err);
+        alert("Failed to copy analysis results.");
+      }
+    }
+  }, [analysisResult]);
+
+  // Function to handle recreating the design on the generate page
+  const handleRecreateDesign = useCallback(() => {
+    if (analysisResult) {
+      const router = useRouter();
+      const params = new URLSearchParams();
+
+      // Map analysis results to generation parameters (simplified for mock data)
+      let designTypeToRecreate = "lsystem"; // Default
+
+      // Simple heuristic for designType based on analysis
+      if (analysisResult.gridSystem.toLowerCase().includes("square grid") && analysisResult.complexity.toLowerCase() === "intermediate") {
+        designTypeToRecreate = "lsystem";
+        params.set("axiom", "FBFBFBFB");
+        params.set("rules", JSON.stringify({ "A": "AFBFA", "B": "AFBFBFBFA" }));
+        params.set("angle", "45");
+        params.set("dotSpacing", "20");
+        params.set("iterations", "2");
+      } else if (analysisResult.symmetryType.toLowerCase().includes("4-fold") && analysisResult.gridSystem.toLowerCase().includes("square grid")) {
+        designTypeToRecreate = "grouptheory";
+        params.set("grid_size", "8");
+        params.set("polygon1_sides", "6");
+        params.set("polygon1_radius", "3");
+        params.set("polygon2_sides", "8");
+        params.set("polygon2_radius", "2");
+      } else if (analysisResult.gridSystem.toLowerCase().includes("dot grid")) { // Assuming dot grid implies suzhi/kambi for simplicity
+        designTypeToRecreate = "suzhi"; // Or kambi, depending on more specific rules
+        params.set("axiom", "FBFBFBFB");
+        params.set("rules", JSON.stringify({ "A": "AFBFA", "B": "AFBFBFBFA" }));
+        params.set("angle", "45");
+        params.set("dotSpacing", "15");
+        params.set("iterations", "3");
+      }
+      
+      params.set("designType", designTypeToRecreate);
+      params.set("symmetryType", analysisResult.symmetryType.split(' ')[0].replace('-', '').toLowerCase()); // e.g., 4fold
+      params.set("gridType", analysisResult.gridSystem.split(' ')[0].toLowerCase()); // e.g., square
+      // More detailed parameter mapping would go here for a real implementation
+
+      router.push(`/generate?${params.toString()}`);
+    }
+  }, [analysisResult]);
+
+  // Helper function for client-side image analysis (placeholder)
+  const analyzeImageClientSide = (imageData: string): AnalysisResult => {
+    // In a real scenario, this would involve complex image processing in JS
+    // For this placeholder, we'll extract basic info or provide static mock data.
+    let dimensions = "N/A";
+    let dotCount = 0;
+    let complexity = "Basic";
+
+    // Attempt to extract dimensions from base64 if it's a data URL
+    if (imageData.startsWith("data:image")) {
+      const img = new Image();
+      img.src = imageData;
+      dimensions = `${img.width} x ${img.height} pixels`;
+      // This is still highly simplified; actual analysis needs a proper library
+      // For example, rudimentary dot count could be estimated by pixel analysis.
+      // For now, these remain largely illustrative.
+      dotCount = Math.floor(Math.random() * 100); // Mock dot count
+      complexity = dotCount > 50 ? "Advanced" : "Intermediate";
+    }
+
+    return {
+      symmetryType: "Client-Side Analysis (Mock)",
+      rotationPatterns: ["No specific pattern (Client-side Mock)"],
+      gridSystem: "Dynamic Grid (Client-side Mock)",
+      complexity: complexity,
+      specifications: {
+        dimensions: dimensions,
+        dotCount: dotCount,
+        lineLength: "N/A",
+        strokeWidth: "N/A",
+      },
+      algorithm: ["1. Basic image properties extracted", "2. Mock analysis applied"],
+      culturalSignificance: "This analysis is a client-side placeholder.",
+    }
+  }
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -85,21 +194,9 @@ export function AnalyzeUpload() {
     }
 
     try {
-      const response = await fetch("https://kolamkar-s-1.onrender.com/analyze-kolam-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ image: uploadedImage }),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`HTTP error! status: ${response.status}. Details: ${errorText}`)
-      }
-
-      const result: AnalysisResult = await response.json()
-      setAnalysisResult(result)
+      // Perform client-side analysis
+      const result = analyzeImageClientSide(uploadedImage);
+      setAnalysisResult(result);
 
     } catch (e: any) {
       setError(e.message)
@@ -303,7 +400,7 @@ export function AnalyzeUpload() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-3 pt-4 border-t border-border">
-                <Button className="flex-1 sm:flex-none">
+                <Button onClick={handleDownloadReport} disabled={!analysisResult} className="flex-1 sm:flex-none">
                   <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
@@ -314,7 +411,7 @@ export function AnalyzeUpload() {
                   </svg>
                   Download Report
                 </Button>
-                <Button variant="outline" className="flex-1 sm:flex-none bg-transparent">
+                <Button onClick={handleShareAnalysis} disabled={!analysisResult} variant="outline" className="flex-1 sm:flex-none bg-transparent">
                   <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
@@ -325,7 +422,7 @@ export function AnalyzeUpload() {
                   </svg>
                   Share Analysis
                 </Button>
-                <Button variant="secondary" className="flex-1 sm:flex-none">
+                <Button onClick={handleRecreateDesign} disabled={!analysisResult} variant="secondary" className="flex-1 sm:flex-none">
                   <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"

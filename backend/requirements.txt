@@ -1,9 +1,3 @@
 fastapi
 uvicorn
 svgwrite
-pandas
-numpy
-tensorflow
-scikit-learn
-Pillow
-requests

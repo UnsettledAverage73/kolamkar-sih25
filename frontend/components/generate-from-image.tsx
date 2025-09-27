@@ -12,6 +12,48 @@ export function GenerateFromImage() {
   const [generatedKolamSvg, setGeneratedKolamSvg] = useState<string | null>(null) // New state for generated SVG
   const [error, setError] = useState<string | null>(null)
 
+  // Function to save SVG as a file
+  const saveSvgAsFile = () => {
+    if (generatedKolamSvg) {
+      const blob = new Blob([generatedKolamSvg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'kolam_from_image.svg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  // Function to save SVG as PNG
+  const saveSvgAsPng = () => {
+    if (generatedKolamSvg) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const svgBlob = new Blob([generatedKolamSvg], { type: 'image/svg+xml;charset=utf-8' });
+      const DOMURL = window.URL || window.webkitURL || window;
+      const url = DOMURL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx?.drawImage(img, 0, 0);
+        DOMURL.revokeObjectURL(url);
+        
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = 'kolam_from_image.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      img.src = url;
+    }
+  };
+
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
@@ -51,21 +93,12 @@ export function GenerateFromImage() {
     }
 
     try {
-      const response = await fetch("https://kolamkar-s-1.onrender.com/generate-from-image", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ image: uploadedImage }),
-      })
+      // Simulate processing time
+      await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate client-side processing
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(`HTTP error! status: ${response.status}. Details: ${errorText}`)
-      }
-
-      const svgData = await response.text()
-      setGeneratedKolamSvg(svgData)
+      // Simplified client-side processing: just use the uploaded image as the "generated" SVG/image.
+      // In a real scenario, complex image processing (e.g., edge detection, vectorization) would happen here.
+      setGeneratedKolamSvg(uploadedImage);
 
     } catch (e: any) {
       setError(e.message)
@@ -215,7 +248,7 @@ export function GenerateFromImage() {
           {generatedKolamSvg && (
             <>              {/* Action Buttons */}
               <div className="mt-6 flex flex-wrap gap-3">
-                <Button className="flex-1 sm:flex-none">
+                <Button onClick={saveSvgAsFile} disabled={!generatedKolamSvg} className="flex-1 sm:flex-none">
                   <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
@@ -226,7 +259,7 @@ export function GenerateFromImage() {
                   </svg>
                   Save as SVG
                 </Button>
-                <Button variant="outline" className="flex-1 sm:flex-none bg-transparent">
+                <Button onClick={saveSvgAsPng} disabled={!generatedKolamSvg} variant="outline" className="flex-1 sm:flex-none bg-transparent">
                   <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation" // Import useRouter and useSearchParams
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -9,8 +10,691 @@ import { Input } from "@/components/ui/input"
 import { Slider } from "@/components/ui/slider"
 import { KolamCanvas } from "@/components/kolam-canvas"
 
+interface KolamParametersType {
+  gridType: string;
+  rows: number;
+  columns: number;
+  dotSpacing: number;
+  strokeType: string;
+  symmetryType: string;
+  iterations: number;
+  rhombus_size: number;
+  grid_size: number;
+  polygon1_sides: number;
+  polygon1_radius: number;
+  polygon2_sides: number;
+  polygon2_radius: number;
+  axiom: string;
+  rules: { [key: string]: string };
+  angle: number;
+  animationSpeed?: number; // Optional, as it's passed separately to generation functions
+  strokeColor: string;
+  backgroundColor: string;
+  designType?: string; // Add designType to the interface
+}
+
+// Helper function to expand L-System string (Python equivalent)
+const expandLsystemString = (axiom: string, rules: { [key: string]: string }, iterations: number): string => {
+  let result = axiom
+  for (let i = 0; i < iterations; i++) {
+    result = result
+      .split("")
+      .map((char) => rules[char] || char)
+      .join("")
+  }
+  return result
+}
+
+// Helper function to generate L-System Kolam SVG client-side
+const generateLsystemKolamSvgClientSide = (parameters: any): string => {
+  const { axiom, rules, angle, dotSpacing, iterations, animationSpeed, strokeColor, backgroundColor } = parameters
+  const lsystemString = expandLsystemString(axiom, rules, iterations)
+
+  let currentX = 300
+  let currentY = 300
+  let currentAngle = 0 // In degrees
+
+  const svgElements: { type: string, x1?: number, y1?: number, x2?: number, y2?: number, pathData?: string, length: number }[] = []
+  let totalLength = 0;
+
+  const drawLineSvg = (length: number) => {
+    const newX = currentX + length * Math.cos(currentAngle * Math.PI / 180)
+    const newY = currentY + length * Math.sin(currentAngle * Math.PI / 180)
+    svgElements.push({ type: 'line', x1: currentX, y1: currentY, x2: newX, y2: newY, length: length });
+    totalLength += length;
+    currentX = newX
+    currentY = newY
+  }
+
+  const drawArcSvg = (radius: number, angleDegrees: number) => {
+    const currentAngleRad = currentAngle * Math.PI / 180
+    let centerX, centerY;
+    let absRadius = Math.abs(radius);
+
+    let centerAngleRad;
+    if (radius > 0) { // Left turn arc
+      centerAngleRad = currentAngleRad + Math.PI / 2;
+    } else { // Right turn arc
+      centerAngleRad = currentAngleRad - Math.PI / 2;
+      absRadius = Math.abs(radius);
+    }
+
+    centerX = currentX + absRadius * Math.cos(centerAngleRad);
+    centerY = currentY + absRadius * Math.sin(centerAngleRad);
+
+    const startAngleRad = Math.atan2(currentY - centerY, currentX - centerX);
+    const endAngleRad = startAngleRad + angleDegrees * Math.PI / 180;
+
+    let sweepFlag = radius > 0 ? 0 : 1; // 0 for CCW, 1 for CW in SVG arc (opposite of Python turtle logic for positive/negative radius)
+    if (angleDegrees < 0) {
+      sweepFlag = 1 - sweepFlag;
+    }
+    const largeArcFlag = Math.abs(angleDegrees) > 180 ? 1 : 0;
+
+    const endX = centerX + absRadius * Math.cos(endAngleRad);
+    const endY = centerY + absRadius * Math.sin(endAngleRad);
+
+    const pathData = `M ${currentX},${currentY} A ${absRadius},${absRadius} 0 ${largeArcFlag} ${sweepFlag} ${endX},${endY}`;
+    const arcLength = Math.abs(angleDegrees * Math.PI / 180 * absRadius);
+    
+    svgElements.push({ type: 'path', pathData: pathData, length: arcLength });
+    totalLength += arcLength;
+
+    currentX = endX;
+    currentY = endY;
+    currentAngle += angleDegrees;
+  }
+
+  // Adjust initial position similar to the Python backend's L-System logic
+  currentX = 300 - parameters.dotSpacing;
+  currentY = 300 + parameters.dotSpacing;
+
+  for (const symbol of lsystemString) {
+    if (symbol === "F") {
+      drawLineSvg(parameters.dotSpacing);
+    } else if (symbol === "A") {
+      drawArcSvg(parameters.dotSpacing, 90);
+    } else if (symbol === "B") {
+      const forwardUnits = 5 / (2 ** 0.5);
+      drawLineSvg(forwardUnits);
+      drawArcSvg(forwardUnits, 270);
+    } else if (symbol === "+") {
+      currentAngle += angle;
+    } else if (symbol === "-") {
+      currentAngle -= angle;
+    }
+  }
+
+  // Generate animated SVG
+  let accumulatedDelay = 0;
+  const animationDurationPerSegment = animationSpeed || 100; // Use animationSpeed from parameters, default to 100ms
+  const totalAnimationDuration = totalLength / dotSpacing * animationDurationPerSegment; // Total duration based on effective dot units
+
+  const { svgElements: animatedSvgElements, animationStyles: animatedAnimationStyles } = svgElements.map((element, index) => {
+    const id = `${element.type}-${index}`;
+    const delay = accumulatedDelay; // Staggered delay
+    accumulatedDelay += element.length / dotSpacing * animationDurationPerSegment; // Increment delay based on segment length
+
+    const animationStyle = `
+      #${id} {
+        stroke-dasharray: ${element.length};
+        stroke-dashoffset: ${element.length};
+        animation: dash ${element.length / dotSpacing * animationDurationPerSegment}ms linear ${delay}ms forwards;
+      }
+    `;
+
+    let svgElement = '';
+    if (element.type === 'line') {
+      svgElement = `<line id="${id}" x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="${strokeColor}" stroke-width="2" />`;
+    } else if (element.type === 'path') {
+      svgElement = `<path id="${id}" d="${element.pathData}" stroke="${strokeColor}" stroke-width="2" fill="none" />`;
+    }
+    return { svgElement, animationStyle };
+  }).reduce((acc, current) => ({
+    svgElements: acc.svgElements + current.svgElement,
+    animationStyles: acc.animationStyles + current.animationStyle,
+  }), { svgElements: '', animationStyles: '' });
+
+  return `<svg width="600" height="600" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+            <style>
+              @keyframes dash {
+                to {
+                  stroke-dashoffset: 0;
+                }
+              }
+              ${animatedAnimationStyles}
+            </style>
+            <rect x="0" y="0" width="100%" height="100%" fill="${backgroundColor}" />
+            ${animatedSvgElements}
+          </svg>`
+}
+
+// Helper function to generate Suzhi Kolam SVG client-side
+const generateSuzhiKolamSvgClientSide = (parameters: any): string => {
+  const { rows, columns, dotSpacing, strokeType, gridType, symmetryType, animationSpeed, strokeColor, backgroundColor } = parameters;
+
+  const dwgWidth = columns * dotSpacing + dotSpacing;
+  const dwgHeight = rows * dotSpacing + dotSpacing;
+
+  const svgElements: { type: string, x1?: number, y1?: number, x2?: number, y2?: number, pathData?: string, length: number }[] = []
+  let totalLength = 0;
+
+  // Helper to add a line segment for animation
+  const addLineSegment = (x1: number, y1: number, x2: number, y2: number) => {
+    const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    if (length > 0) {
+      svgElements.push({ type: 'line', x1, y1, x2, y2, length });
+      totalLength += length;
+    }
+  };
+
+  // Helper to add an arc segment for animation
+  const addArcSegment = (pathData: string, approximateLength: number) => {
+    if (approximateLength > 0) {
+      svgElements.push({ type: 'path', pathData, length: approximateLength });
+      totalLength += approximateLength;
+    }
+  };
+
+  // Generate grid dots based on gridType
+  const dots: { x: number, y: number }[] = [];
+  if (gridType === "square") {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        dots.push({ x: c * dotSpacing + dotSpacing / 2, y: r * dotSpacing + dotSpacing / 2 });
+      }
+    }
+  } else if (gridType === "triangular") {
+    // For triangular grid, adjust positions based on row parity
+    const h = dotSpacing * Math.sqrt(3) / 2; // Height of equilateral triangle
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const xOffset = (r % 2 === 0) ? 0 : dotSpacing / 2; // Offset for alternate rows
+        dots.push({ x: c * dotSpacing + dotSpacing / 2 + xOffset, y: r * h + dotSpacing / 2 });
+      }
+    }
+  } else if (gridType === "hexagonal") {
+    const hexRadius = dotSpacing / Math.sqrt(3); // Radius of inner hexagon
+    const rowHeight = hexRadius * 1.5; // Vertical distance between hex rows
+    const colWidth = hexRadius * Math.sqrt(3); // Horizontal distance between hex columns
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const x = c * colWidth + (r % 2) * colWidth / 2 + dotSpacing / 2;
+        const y = r * rowHeight + dotSpacing / 2;
+        dots.push({ x, y });
+      }
+    }
+  } else if (gridType === "circular") {
+    const maxRadius = Math.min(dwgWidth, dwgHeight) / 2 - dotSpacing; // Max radius for dots
+    const center = { x: dwgWidth / 2, y: dwgHeight / 2 };
+
+    for (let r = 0; r < rows; r++) {
+      const currentRadius = (maxRadius / rows) * (r + 1);
+      const numDotsOnCircle = Math.max(8, Math.floor(2 * Math.PI * currentRadius / dotSpacing)); // Ensure enough dots
+      for (let i = 0; i < numDotsOnCircle; i++) {
+        const angle = (i * 2 * Math.PI) / numDotsOnCircle;
+        dots.push({
+          x: center.x + currentRadius * Math.cos(angle),
+          y: center.y + currentRadius * Math.sin(angle),
+        });
+      }
+    }
+  }
+
+  // Suzhi drawing logic: Connect adjacent dots horizontally and vertically
+  // This is a basic example; more complex Suzhi patterns would involve specific rules for curves and loops.
+  if (gridType === "square") {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const dotIndex = r * columns + c;
+        const currentDot = dots[dotIndex];
+
+        // Connect horizontally
+        if (c < columns - 1) {
+          const nextDot = dots[dotIndex + 1];
+          addLineSegment(currentDot.x, currentDot.y, nextDot.x, nextDot.y);
+        }
+
+        // Connect vertically
+        if (r < rows - 1) {
+          const nextDot = dots[(r + 1) * columns + c];
+          addLineSegment(currentDot.x, currentDot.y, nextDot.x, nextDot.y);
+        }
+      }
+    }
+  } else if (gridType === "triangular") {
+    // For triangular grid, connect to neighbors. More complex.
+    // Simplified: connect horizontal and diagonal neighbors
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const currentDot = dots[r * columns + c];
+
+        // Connect right
+        if (c < columns - 1) {
+          const rightDot = dots[r * columns + (c + 1)];
+          addLineSegment(currentDot.x, currentDot.y, rightDot.x, rightDot.y);
+        }
+        // Connect diagonal-down-right (if row is even)
+        if (r < rows - 1) {
+          const downRightDot = dots[(r + 1) * columns + c + (r % 2 === 0 ? 0 : -1)]; // Adjust for triangular offset
+          if (downRightDot) addLineSegment(currentDot.x, currentDot.y, downRightDot.x, downRightDot.y);
+        }
+        // Connect diagonal-down-left (if row is odd)
+        if (r < rows - 1) {
+          const downLeftDot = dots[(r + 1) * columns + c + (r % 2 === 0 ? -1 : 0)]; // Adjust for triangular offset
+          if (downLeftDot) addLineSegment(currentDot.x, currentDot.y, downLeftDot.x, downLeftDot.y);
+        }
+      }
+    }
+  } else if (gridType === "hexagonal") {
+    // Similar logic as triangular, connecting to 6 neighbors
+    // This is a basic grid connection. A true Suzhi would have curves.
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const currentDot = dots[r * columns + c];
+
+        // Connect right
+        if (c < columns - 1) {
+          const rightDot = dots[r * columns + c + 1];
+          addLineSegment(currentDot.x, currentDot.y, rightDot.x, rightDot.y);
+        }
+        // Connect to specific diagonal neighbors based on row parity
+        if (r < rows - 1) {
+          // Down-left
+          if (r % 2 === 0 && c > 0) {
+            const downLeftDot = dots[(r + 1) * columns + c - 1];
+            addLineSegment(currentDot.x, currentDot.y, downLeftDot.x, downLeftDot.y);
+          }
+          // Down-right
+          const downRightDot = dots[(r + 1) * columns + c + (r % 2 === 0 ? 0 : 1)];
+          if (downRightDot) addLineSegment(currentDot.x, currentDot.y, downRightDot.x, downRightDot.y);
+        }
+      }
+    }
+  } else if (gridType === "circular") {
+    // For circular grids, connect dots on the same circle and adjacent circles
+    for (let i = 0; i < dots.length; i++) {
+      const currentDot = dots[i];
+      // Connect to the next dot on the same circle (if applicable)
+      const nextDotIndexOnCircle = (i + 1) % (dots.length / rows); // Simplified, assumes evenly distributed per circle
+      // This logic needs refinement to correctly identify dots on the same ring.
+      // For now, let's skip complex circular connections and focus on the grid aspect.
+      // We'll simply draw a few circles as a placeholder.
+      addArcSegment(`M ${currentDot.x - 5},${currentDot.y} A 5,5 0 1 0 ${currentDot.x + 5},${currentDot.y} A 5,5 0 1 0 ${currentDot.x - 5},${currentDot.y}`, 2 * Math.PI * 5); // Draw a small circle around each dot
+    }
+  }
+
+  // Determine stroke properties
+  let strokeWidth = 2;
+  let strokeDasharray = "0";
+  switch (strokeType) {
+    case "dashed":
+      strokeDasharray = "10 5";
+      break;
+    case "dotted":
+      strokeDasharray = "2 8";
+      strokeWidth = 1;
+      break;
+    case "thick":
+      strokeWidth = 4;
+      break;
+    case "continuous":
+    default:
+      strokeDasharray = "0";
+      break;
+  }
+
+  // Generate animated SVG
+  let accumulatedDelay = 0;
+  const animationDurationPerSegment = animationSpeed || 100; // Use animationSpeed from parameters, default to 100ms
+
+  const { svgElements: animatedSvgElements, animationStyles: animatedAnimationStyles } = svgElements.map((element, index) => {
+    const id = `${element.type}-${index}`;
+    const delay = accumulatedDelay; // Staggered delay
+    // For Suzhi, segment length will vary, so use raw length for relative duration
+    accumulatedDelay += element.length / dotSpacing * animationDurationPerSegment; 
+
+    const animationStyle = `
+      #${id} {
+        stroke-dasharray: ${element.length};
+        stroke-dashoffset: ${element.length};
+        animation: dash ${element.length / dotSpacing * animationDurationPerSegment}ms linear ${delay}ms forwards;
+      }
+    `;
+
+    let svgElement = '';
+    if (element.type === 'line') {
+      svgElement = `<line id="${id}" x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="${strokeDasharray}" />`;
+    } else if (element.type === 'path') {
+      svgElement = `<path id="${id}" d="${element.pathData}" stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="none" stroke-dasharray="${strokeDasharray}" />`;
+    }
+    return { svgElement, animationStyle };
+  }).reduce((acc, current) => ({
+    svgElements: acc.svgElements + current.svgElement,
+    animationStyles: acc.animationStyles + current.animationStyle,
+  }), { svgElements: '', animationStyles: '', });
+
+  return `<svg width="${dwgWidth}" height="${dwgHeight}" viewBox="0 0 ${dwgWidth} ${dwgHeight}" xmlns="http://www.w3.org/2000/svg">
+            <style>
+              @keyframes dash {
+                to {
+                  stroke-dashoffset: 0;
+                }
+              }
+              ${animatedAnimationStyles}
+            </style>
+            <rect x="0" y="0" width="100%" height="100%" fill="${backgroundColor}" />
+            ${animatedSvgElements}
+          </svg>`
+}
+
+// Helper function to generate Kambi Kolam SVG client-side
+const generateKambiKolamSvgClientSide = (parameters: any): string => {
+  const { rows, columns, dotSpacing, rhombus_size, strokeType, gridType, symmetryType, animationSpeed, strokeColor, backgroundColor } = parameters;
+
+  const dwgWidth = columns * dotSpacing + dotSpacing;
+  const dwgHeight = rows * dotSpacing + dotSpacing;
+
+  const svgElements: { type: string, x1?: number, y1?: number, x2?: number, y2?: number, pathData?: string, length: number }[] = []
+  let totalLength = 0;
+
+  // Helper to add a line segment for animation
+  const addLineSegment = (x1: number, y1: number, x2: number, y2: number) => {
+    const length = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+    if (length > 0) {
+      svgElements.push({ type: 'line', x1, y1, x2, y2, length });
+      totalLength += length;
+    }
+  };
+
+  // Helper to add an arc segment for animation
+  const addArcSegment = (pathData: string, approximateLength: number) => {
+    if (approximateLength > 0) {
+      svgElements.push({ type: 'path', pathData, length: approximateLength });
+      totalLength += approximateLength;
+    }
+  };
+
+  // Generate grid dots based on gridType (reusing logic from Suzhi)
+  const dots: { x: number, y: number }[] = [];
+  if (gridType === "square") {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        dots.push({ x: c * dotSpacing + dotSpacing / 2, y: r * dotSpacing + dotSpacing / 2 });
+      }
+    }
+  } else if (gridType === "triangular") {
+    const h = dotSpacing * Math.sqrt(3) / 2; 
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const xOffset = (r % 2 === 0) ? 0 : dotSpacing / 2; 
+        dots.push({ x: c * dotSpacing + dotSpacing / 2 + xOffset, y: r * h + dotSpacing / 2 });
+      }
+    }
+  } else if (gridType === "hexagonal") {
+    const hexRadius = dotSpacing / Math.sqrt(3); 
+    const rowHeight = hexRadius * 1.5; 
+    const colWidth = hexRadius * Math.sqrt(3); 
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const x = c * colWidth + (r % 2) * colWidth / 2 + dotSpacing / 2;
+        const y = r * rowHeight + dotSpacing / 2;
+        dots.push({ x, y });
+      }
+    }
+  } else if (gridType === "circular") {
+    const maxRadius = Math.min(dwgWidth, dwgHeight) / 2 - dotSpacing; 
+    const center = { x: dwgWidth / 2, y: dwgHeight / 2 };
+
+    for (let r = 0; r < rows; r++) {
+      const currentRadius = (maxRadius / rows) * (r + 1);
+      const numDotsOnCircle = Math.max(8, Math.floor(2 * Math.PI * currentRadius / dotSpacing)); 
+      for (let i = 0; i < numDotsOnCircle; i++) {
+        const angle = (i * 2 * Math.PI) / numDotsOnCircle;
+        dots.push({
+          x: center.x + currentRadius * Math.cos(angle),
+          y: center.y + currentRadius * Math.sin(angle),
+        });
+      }
+    }
+  }
+
+  // Kambi drawing logic: Draw rhombuses around each dot
+  const rSize = rhombus_size * dotSpacing; // Adjust rhombus size based on dot spacing
+
+  if (gridType === "square") {
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < columns; c++) {
+        const dotIndex = r * columns + c;
+        const currentDot = dots[dotIndex];
+
+        // Draw rhombuses around each dot
+        addLineSegment(currentDot.x, currentDot.y - rSize / 2, currentDot.x + rSize / 2, currentDot.y);
+        addLineSegment(currentDot.x + rSize / 2, currentDot.y, currentDot.x, currentDot.y + rSize / 2);
+        addLineSegment(currentDot.x, currentDot.y + rSize / 2, currentDot.x - rSize / 2, currentDot.y);
+        addLineSegment(currentDot.x - rSize / 2, currentDot.y, currentDot.x, currentDot.y - rSize / 2);
+      }
+    }
+  } else if (gridType === "triangular") {
+    // Kambi on triangular grid: more complex, placeholder drawing circles around dots
+    for (const dot of dots) {
+      addArcSegment(`M ${dot.x - rSize / 4},${dot.y} A ${rSize / 4},${rSize / 4} 0 1 0 ${dot.x + rSize / 4},${dot.y} A ${rSize / 4},${rSize / 4} 0 1 0 ${dot.x - rSize / 4},${dot.y}`, 2 * Math.PI * (rSize / 4));
+    }
+  } else if (gridType === "hexagonal") {
+    // Kambi on hexagonal grid: placeholder drawing circles around dots
+    for (const dot of dots) {
+      addArcSegment(`M ${dot.x - rSize / 4},${dot.y} A ${rSize / 4},${rSize / 4} 0 1 0 ${dot.x + rSize / 4},${dot.y} A ${rSize / 4},${rSize / 4} 0 1 0 ${dot.x - rSize / 4},${dot.y}`, 2 * Math.PI * (rSize / 4));
+    }
+  } else if (gridType === "circular") {
+    // Kambi on circular grid: placeholder drawing circles around dots
+    for (const dot of dots) {
+      addArcSegment(`M ${dot.x - rSize / 4},${dot.y} A ${rSize / 4},${rSize / 4} 0 1 0 ${dot.x + rSize / 4},${dot.y} A ${rSize / 4},${rSize / 4} 0 1 0 ${dot.x - rSize / 4},${dot.y}`, 2 * Math.PI * (rSize / 4));
+    }
+  }
+
+  // Determine stroke properties
+  let strokeWidth = 2;
+  let strokeDasharray = "0";
+  switch (strokeType) {
+    case "dashed":
+      strokeDasharray = "10 5";
+      break;
+    case "dotted":
+      strokeDasharray = "2 8";
+      strokeWidth = 1;
+      break;
+    case "thick":
+      strokeWidth = 4;
+      break;
+    case "continuous":
+    default:
+      strokeDasharray = "0";
+      break;
+  }
+
+  // Generate animated SVG
+  let accumulatedDelay = 0;
+  const animationDurationPerSegment = animationSpeed || 100; // Use animationSpeed from parameters, default to 100ms
+
+  const { svgElements: animatedSvgElements, animationStyles: animatedAnimationStyles } = svgElements.map((element, index) => {
+    const id = `${element.type}-${index}`;
+    const delay = accumulatedDelay; // Staggered delay
+    // For Kambi, segment length will vary, so use raw length for relative duration
+    accumulatedDelay += element.length / dotSpacing * animationDurationPerSegment; 
+
+    const animationStyle = `
+      #${id} {
+        stroke-dasharray: ${element.length};
+        stroke-dashoffset: ${element.length};
+        animation: dash ${element.length / dotSpacing * animationDurationPerSegment}ms linear ${delay}ms forwards;
+      }
+    `;
+
+    let svgElement = '';
+    if (element.type === 'line') {
+      svgElement = `<line id="${id}" x1="${element.x1}" y1="${element.y1}" x2="${element.x2}" y2="${element.y2}" stroke="${strokeColor}" stroke-width="${strokeWidth}" stroke-dasharray="${strokeDasharray}" />`;
+    } else if (element.type === 'path') {
+      svgElement = `<path id="${id}" d="${element.pathData}" stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="none" stroke-dasharray="${strokeDasharray}" />`;
+    }
+    return { svgElement, animationStyle };
+  }).reduce((acc, current) => ({
+    svgElements: acc.svgElements + current.svgElement,
+    animationStyles: acc.animationStyles + current.animationStyle,
+  }), { svgElements: '', animationStyles: '', });
+
+  return `<svg width="${dwgWidth}" height="${dwgHeight}" viewBox="0 0 ${dwgWidth} ${dwgHeight}" xmlns="http://www.w3.org/2000/svg">
+            <style>
+              @keyframes dash {
+                to {
+                  stroke-dashoffset: 0;
+                }
+              }
+              ${animatedAnimationStyles}
+            </style>
+            <rect x="0" y="0" width="100%" height="100%" fill="${backgroundColor}" />
+            ${animatedSvgElements}
+          </svg>`
+}
+
+// Helper function to generate Group Theory Kolam SVG client-side
+const generateGroupTheoryKolamSvgClientSide = (parameters: any): string => {
+  const {
+    grid_size,
+    polygon1_sides,
+    polygon1_radius,
+    polygon2_sides,
+    polygon2_radius,
+    strokeType,
+    animationSpeed, // Add animationSpeed
+    strokeColor, // Add strokeColor
+    backgroundColor, // Add backgroundColor
+  } = parameters
+
+  const dwgWidth = 800; // Corresponds to backend's 800px size
+  const dwgHeight = 800; // Corresponds to backend's 800px size
+  const center_x = dwgWidth / 2;
+  const center_y = dwgHeight / 2;
+  const scale_factor = 40; // Corresponds to the 40 used in the python turtle example
+
+  const svgElements: { type: string, pathData: string, length: number }[] = []
+  let totalLength = 0;
+
+  // Function to add a path segment and approximate its length
+  const addPathSegment = (pathData: string) => {
+    // A very rough approximation for path length for animation purposes.
+    // A more accurate method would involve SVG DOM parsing and getTotalLength(),
+    // but that's not feasible in a pure string generation context.
+    const length = pathData.length; // Placeholder length, can be refined for better animation timing
+    svgElements.push({ type: 'path', pathData, length });
+    totalLength += length;
+  };
+
+  const getPolygonPoints = (sides: number, radius: number) => {
+    const localPoints: { x: number, y: number }[] = [];
+    const angleStep = (2 * Math.PI) / sides;
+    for (let i = 0; i < sides; i++) {
+      const x = radius * Math.cos(i * angleStep);
+      const y = radius * Math.sin(i * angleStep);
+      localPoints.push({ x, y });
+    }
+    return localPoints;
+  };
+
+  const polygon1Local = getPolygonPoints(polygon1_sides, polygon1_radius);
+  const polygon2Local = getPolygonPoints(polygon2_sides, polygon2_radius);
+
+  const grid_offset_x = center_x - (grid_size - 1) * scale_factor / 2;
+  const grid_offset_y = center_y - (grid_size - 1) * scale_factor / 2;
+
+  for (let r_idx = 0; r_idx < grid_size; r_idx++) {
+    for (let c_idx = 0; c_idx < grid_size; c_idx++) {
+      const currentPolygonLocal = (r_idx + c_idx) % 2 === 0 ? polygon1Local : polygon2Local;
+      
+      // Calculate the position for each polygon based on grid index
+      const offset_x = grid_offset_x + c_idx * scale_factor;
+      const offset_y = grid_offset_y + r_idx * scale_factor;
+
+      let pathData = '';
+      for (let i = 0; i < currentPolygonLocal.length; i++) {
+        const { x: px, y: py } = currentPolygonLocal[i];
+        const finalX = offset_x + px * scale_factor / 3; // Scale factor applied as in backend
+        const finalY = offset_y + py * scale_factor / 3; // Scale factor applied as in backend
+        if (i === 0) {
+          pathData += `M ${finalX},${finalY}`;
+        } else {
+          pathData += ` L ${finalX},${finalY}`;
+        }
+      }
+      if (currentPolygonLocal.length > 0) {
+        pathData += ` Z`; // Close the polygon
+        addPathSegment(pathData);
+      }
+    }
+  }
+
+  // Determine stroke properties
+  let strokeWidth = 2;
+  let strokeDasharray = "0";
+  switch (strokeType) {
+    case "dashed":
+      strokeDasharray = "10 5";
+      break;
+    case "dotted":
+      strokeDasharray = "2 8";
+      strokeWidth = 1;
+      break;
+    case "thick":
+      strokeWidth = 4;
+      break;
+    case "continuous":
+    default:
+      strokeDasharray = "0";
+      break;
+  }
+
+  // Generate animated SVG
+  let accumulatedDelay = 0;
+  const animationDurationPerSegment = animationSpeed || 100; // Use animationSpeed from parameters, default to 100ms
+
+  const { svgElements: animatedSvgElements, animationStyles: animatedAnimationStyles } = svgElements.map((element, index) => {
+    const id = `${element.type}-${index}`;
+    const delay = accumulatedDelay; // Staggered delay
+    accumulatedDelay += element.length * animationDurationPerSegment; // Increment delay based on rough length
+
+    const animationStyle = `
+      #${id} {
+        stroke-dasharray: ${element.length};
+        stroke-dashoffset: ${element.length};
+        animation: dash ${element.length * animationDurationPerSegment}ms linear ${delay}ms forwards;
+      }
+    `;
+
+    const svgElement = `<path id="${id}" d="${element.pathData}" stroke="${strokeColor}" stroke-width="${strokeWidth}" fill="none" stroke-dasharray="${strokeDasharray}" />`;
+    return { svgElement, animationStyle };
+  }).reduce((acc, current) => ({
+    svgElements: acc.svgElements + current.svgElement,
+    animationStyles: acc.animationStyles + current.animationStyle,
+  }), { svgElements: '', animationStyles: '', });
+
+  return `<svg width="${dwgWidth}" height="${dwgHeight}" viewBox="0 0 ${dwgWidth} ${dwgHeight}" xmlns="http://www.w3.org/2000/svg">
+            <style>
+              @keyframes dash {
+                to {
+                  stroke-dashoffset: 0;
+                }
+              }
+              ${animatedAnimationStyles}
+            </style>
+            <rect x="0" y="0" width="100%" height="100%" fill="${backgroundColor}" />
+            ${animatedSvgElements}
+          </svg>`
+}
+
+// Main component
 export function GenerateWithInputs() {
-  const [parameters, setParameters] = useState({
+  const [parameters, setParameters] = useState<KolamParametersType>({
     gridType: "square",
     rows: 8,
     columns: 8,
@@ -24,21 +708,255 @@ export function GenerateWithInputs() {
     polygon1_radius: 3, // Initialize polygon1_radius
     polygon2_sides: 8, // Initialize polygon2_sides
     polygon2_radius: 2, // Initialize polygon2_radius
+    axiom: "FBFBFBFB", // Initialize axiom for L-System
+    rules: { "A": "AFBFA", "B": "AFBFBFBFA" }, // Initialize rules for L-System
+    angle: 45, // Initialize angle for L-System
+    strokeColor: "#000000", // Default stroke color (black)
+    backgroundColor: "#ffffff", // Default background color (white)
   })
   const [designType, setDesignType] = useState("lsystem")
   const [kolamSvg, setKolamSvg] = useState<string | null>(null) // Changed from kolamImageBase64
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const [animationSpeed, setAnimationSpeed] = useState<number>(100); // Default to 100ms per segment
+  const [presetName, setPresetName] = useState<string>("");
+  const [savedPresets, setSavedPresets] = useState<{ [key: string]: KolamParametersType }>({});
+
+  // Effect to load presets from local storage on component mount
+  useEffect(() => {
+    try {
+      const storedPresets = localStorage.getItem("kolamPresets");
+      if (storedPresets) {
+        setSavedPresets(JSON.parse(storedPresets));
+      }
+    } catch (e) {
+      console.error("Failed to load presets from local storage", e);
+    }
+  }, []);
+
+  // Effect to read URL parameters and pre-fill state
+  useEffect(() => {
+    const designTypeParam = searchParams.get("designType");
+    const axiomParam = searchParams.get("axiom");
+    const rulesParam = searchParams.get("rules");
+    const angleParam = searchParams.get("angle");
+    const dotSpacingParam = searchParams.get("dotSpacing");
+    const iterationsParam = searchParams.get("iterations");
+    const rhombusSizeParam = searchParams.get("rhombus_size");
+    const gridSizeParam = searchParams.get("grid_size");
+    const polygon1SidesParam = searchParams.get("polygon1_sides");
+    const polygon1RadiusParam = searchParams.get("polygon1_radius");
+    const polygon2SidesParam = searchParams.get("polygon2_sides");
+    const polygon2RadiusParam = searchParams.get("polygon2_radius");
+    const symmetryTypeParam = searchParams.get("symmetryType");
+    const gridTypeParam = searchParams.get("gridType");
+
+    if (designTypeParam) {
+      setDesignType(designTypeParam);
+      setParameters(prevParams => {
+        const newParams = { ...prevParams };
+
+        if (axiomParam) newParams.axiom = axiomParam;
+        if (rulesParam) {
+          try {
+            newParams.rules = JSON.parse(rulesParam);
+          } catch (e) {
+            console.error("Failed to parse rules JSON from URL:", e);
+          }
+        }
+        if (angleParam) newParams.angle = Number.parseInt(angleParam);
+        if (dotSpacingParam) newParams.dotSpacing = Number.parseInt(dotSpacingParam);
+        if (iterationsParam) newParams.iterations = Number.parseInt(iterationsParam);
+        if (rhombusSizeParam) newParams.rhombus_size = Number.parseInt(rhombusSizeParam);
+        if (gridSizeParam) newParams.grid_size = Number.parseInt(gridSizeParam);
+        if (polygon1SidesParam) newParams.polygon1_sides = Number.parseInt(polygon1SidesParam);
+        if (polygon1RadiusParam) newParams.polygon1_radius = Number.parseInt(polygon1RadiusParam);
+        if (polygon2SidesParam) newParams.polygon2_sides = Number.parseInt(polygon2SidesParam);
+        if (polygon2RadiusParam) newParams.polygon2_radius = Number.parseInt(polygon2RadiusParam);
+        if (symmetryTypeParam) newParams.symmetryType = symmetryTypeParam;
+        if (gridTypeParam) newParams.gridType = gridTypeParam;
+
+        return newParams;
+      });
+
+      // Automatically generate the Kolam if parameters were loaded from URL
+      // This might be tricky because generateKolam is an async function and state updates are async.
+      // For now, we'll let the user manually click generate after pre-fill.
+      // Alternatively, we could trigger generateKolam here, but careful with useEffect dependency array.
+    }
+
+    // Clean up URL parameters after use to avoid re-triggering on subsequent renders
+    // This is optional but can make the URL cleaner.
+    // const newUrl = new URL(window.location.href);
+    // Array.from(searchParams.keys()).forEach(key => newUrl.searchParams.delete(key));
+    // router.replace(newUrl.pathname + newUrl.search);
+
+  }, [searchParams]); // Depend on searchParams to react to URL changes
+
+  // Function to save SVG as a file
+  const saveSvgAsFile = () => {
+    if (kolamSvg) {
+      const blob = new Blob([kolamSvg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'kolam_design.svg';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  // Function to save SVG as PNG
+  const saveSvgAsPng = () => {
+    if (kolamSvg) {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const svgBlob = new Blob([kolamSvg], { type: 'image/svg+xml;charset=utf-8' });
+      const DOMURL = window.URL || window.webkitURL || window;
+      const url = DOMURL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx?.drawImage(img, 0, 0);
+        DOMURL.revokeObjectURL(url);
+        
+        const a = document.createElement('a');
+        a.href = canvas.toDataURL('image/png');
+        a.download = 'kolam_design.png';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      img.src = url;
+    }
+  };
 
   const handleParameterChange = (key: string, value: any) => {
     setParameters((prev) => ({ ...prev, [key]: value }))
   }
 
+  const handleSavePreset = () => {
+    if (presetName.trim() === "") {
+      setError("Please enter a name for the preset.");
+      return;
+    }
+    const newPresets = { ...savedPresets, [presetName]: parameters };
+    setSavedPresets(newPresets);
+    localStorage.setItem("kolamPresets", JSON.stringify(newPresets));
+    setError(null);
+    setPresetName(""); // Clear the input after saving
+    // Optionally show a toast notification
+  };
+
+  const handleLoadPreset = (name: string) => {
+    const preset = savedPresets[name];
+    if (preset) {
+      setParameters(preset);
+      setDesignType(preset.designType || "lsystem"); // Ensure designType is set correctly
+      // Optionally set animation speed if it's part of the preset or derived
+      setAnimationSpeed(preset.animationSpeed || 100);
+      setError(null);
+    } else {
+      setError("Preset not found.");
+    }
+  };
+
   const generateKolam = async () => {
     setLoading(true)
     setError(null)
+
+    if (designType === "lsystem") {
+      try {
+        const svgData = generateLsystemKolamSvgClientSide({
+          axiom: parameters.axiom,
+          rules: parameters.rules,
+          angle: parameters.angle,
+          dotSpacing: parameters.dotSpacing,
+          iterations: parameters.iterations,
+          animationSpeed: animationSpeed, // Pass animationSpeed
+          strokeColor: parameters.strokeColor, // Pass strokeColor
+          backgroundColor: parameters.backgroundColor, // Pass backgroundColor
+        });
+        setKolamSvg(svgData);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    } else if (designType === "suzhi") {
+      try {
+        const svgData = generateSuzhiKolamSvgClientSide({
+          rows: parameters.rows,
+          columns: parameters.columns,
+          dotSpacing: parameters.dotSpacing,
+          strokeType: parameters.strokeType,
+          gridType: parameters.gridType,
+          symmetryType: parameters.symmetryType,
+          animationSpeed: animationSpeed, // Pass animationSpeed
+          strokeColor: parameters.strokeColor, // Pass strokeColor
+          backgroundColor: parameters.backgroundColor, // Pass backgroundColor
+        });
+        setKolamSvg(svgData);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    } else if (designType === "kambi") {
+      try {
+        const svgData = generateKambiKolamSvgClientSide({
+          rows: parameters.rows,
+          columns: parameters.columns,
+          dotSpacing: parameters.dotSpacing,
+          rhombus_size: parameters.rhombus_size,
+          strokeType: parameters.strokeType,
+          gridType: parameters.gridType,
+          symmetryType: parameters.symmetryType,
+          animationSpeed: animationSpeed, // Pass animationSpeed
+          strokeColor: parameters.strokeColor, // Pass strokeColor
+          backgroundColor: parameters.backgroundColor, // Pass backgroundColor
+        });
+        setKolamSvg(svgData);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    } else if (designType === "grouptheory") {
+      try {
+        const svgData = generateGroupTheoryKolamSvgClientSide({
+          grid_size: parameters.grid_size,
+          polygon1_sides: parameters.polygon1_sides,
+          polygon1_radius: parameters.polygon1_radius,
+          polygon2_sides: parameters.polygon2_sides,
+          polygon2_radius: parameters.polygon2_radius,
+          strokeType: parameters.strokeType,
+          animationSpeed: animationSpeed, // Pass animationSpeed
+          strokeColor: parameters.strokeColor, // Pass strokeColor
+          backgroundColor: parameters.backgroundColor, // Pass backgroundColor
+        });
+        setKolamSvg(svgData);
+      } catch (e: any) {
+        setError(e.message);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Existing backend call (this block will be effectively unused after all types are client-side)
     try {
-      const response = await fetch("http://localhost:8000/generate-kolam", {
+      const response = await fetch("http://localhost:8000/generate-kolam-svg", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -270,6 +1188,74 @@ export function GenerateWithInputs() {
               className="w-full"
             />
           </div>
+          {/* Stroke Color */}
+          <div className="space-y-2">
+            <Label htmlFor="stroke-color">Stroke Color</Label>
+            <Input
+              id="stroke-color"
+              type="color"
+              value={parameters.strokeColor}
+              onChange={(e) => handleParameterChange("strokeColor", e.target.value)}
+              className="w-full"
+            />
+          </div>
+          {/* Background Color */}
+          <div className="space-y-2">
+            <Label htmlFor="background-color">Background Color</Label>
+            <Input
+              id="background-color"
+              type="color"
+              value={parameters.backgroundColor}
+              onChange={(e) => handleParameterChange("backgroundColor", e.target.value)}
+              className="w-full"
+            />
+          </div>
+          {/* Animation Speed */}
+          <div className="space-y-2">
+            <Label>Animation Speed: {animationSpeed}ms/segment</Label>
+            <Slider
+              value={[animationSpeed]}
+              onValueChange={(value) => setAnimationSpeed(value[0])}
+              max={500} // Max animation duration per segment
+              min={10}  // Min animation duration per segment
+              step={10}
+              className="w-full"
+            />
+          </div>
+          {/* Preset Management */}
+          <div className="space-y-4 border-t pt-4 mt-4">
+            <h4 className="font-medium text-card-foreground">Save/Load Presets</h4>
+            <div className="space-y-2">
+              <Label htmlFor="preset-name">Preset Name</Label>
+              <Input
+                id="preset-name"
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                placeholder="Enter preset name"
+              />
+            </div>
+            <Button onClick={handleSavePreset} className="w-full" variant="outline">
+              Save Current Design as Preset
+            </Button>
+            {Object.keys(savedPresets).length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="load-preset">Load Preset</Label>
+                <Select onValueChange={(value) => handleLoadPreset(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a saved preset" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(savedPresets).map((name) => (
+                      <SelectItem key={name} value={name}>
+                        {name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           <Button onClick={generateKolam} disabled={loading} className="w-full">
             {loading ? "Generating..." : "Generate Kolam"}
           </Button>
@@ -288,7 +1274,7 @@ export function GenerateWithInputs() {
 
           {/* Action Buttons */}
           <div className="mt-6 flex flex-wrap gap-3">
-            <Button className="flex-1 sm:flex-none">
+            <Button onClick={saveSvgAsFile} disabled={!kolamSvg} className="flex-1 sm:flex-none">
               <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
@@ -299,7 +1285,7 @@ export function GenerateWithInputs() {
               </svg>
               Save as SVG
             </Button>
-            <Button variant="outline" className="flex-1 sm:flex-none bg-transparent">
+            <Button onClick={saveSvgAsPng} disabled={!kolamSvg} variant="outline" className="flex-1 sm:flex-none bg-transparent">
               <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
