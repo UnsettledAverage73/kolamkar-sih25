@@ -5,30 +5,25 @@
 
 :root {
   /* Updated color palette for Kolam-themed design */
-  --background: oklch(1 0 0); /* Pure white */
-  --foreground: oklch(0.35 0 0); /* Dark gray for text */
-  --card: oklch(0.98 0.02 195); /* Light cyan background */
-  --card-foreground: oklch(0.25 0.08 195); /* Cyan-800 for card text */
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.35 0 0);
-  --primary: oklch(0.25 0.08 195); /* Cyan-800 primary */
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.65 0.25 330); /* Vivid pink accent */
-  --secondary-foreground: oklch(1 0 0);
-  --muted: oklch(0.98 0 0);
-  --muted-foreground: oklch(0.35 0 0);
-  --accent: oklch(0.65 0.25 330); /* Pink accent */
-  --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.35 0 0);
-  --input: oklch(1 0 0);
-  --ring: oklch(0.25 0.08 195 / 0.5);
-  --chart-1: oklch(0.25 0.08 195);
-  --chart-2: oklch(0.65 0.25 330);
-  --chart-3: oklch(0.45 0.15 195);
-  --chart-4: oklch(0.98 0 0);
-  --chart-5: oklch(0.35 0 0);
+  --background: var(--neoLight);
+  --foreground: var(--neoDark);
+  --card: var(--neoLight);
+  --card-foreground: var(--neoDark);
+  --popover: var(--neoLight);
+  --popover-foreground: var(--neoDark);
+  --primary: var(--neoBlue);
+  --primary-foreground: var(--neoLight);
+  --secondary: var(--neoMagenta);
+  --secondary-foreground: var(--neoLight);
+  --muted: var(--neoLight);
+  --muted-foreground: var(--neoDark);
+  --accent: var(--neoCyan);
+  --accent-foreground: var(--neoDark);
+  --destructive: var(--neoMagenta);
+  --destructive-foreground: var(--neoLight);
+  --border: var(--neoDark);
+  --input: var(--neoLight);
+  --ring: var(--neoBlue);
   --radius: 0.5rem;
   --sidebar: oklch(0.98 0.02 195);
   --sidebar-foreground: oklch(0.35 0 0);
@@ -41,25 +36,25 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
+  --background: var(--neoDark);
+  --foreground: var(--neoLight);
+  --card: var(--neoDark);
+  --card-foreground: var(--neoLight);
+  --popover: var(--neoDark);
+  --popover-foreground: var(--neoLight);
+  --primary: var(--neoCyan);
+  --primary-foreground: var(--neoDark);
+  --secondary: var(--neoMustard);
+  --secondary-foreground: var(--neoDark);
+  --muted: var(--neoDark);
+  --muted-foreground: var(--neoLight);
+  --accent: var(--neoBlue);
+  --accent-foreground: var(--neoLight);
+  --destructive: var(--neoMustard);
+  --destructive-foreground: var(--neoDark);
+  --border: var(--neoLight);
+  --input: var(--neoDark);
+  --ring: var(--neoCyan);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
@@ -76,7 +71,7 @@
 }
 
 /* Added custom fonts for Kolam theme */
-@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Source+Sans+Pro:wght@400;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap");
 
 @theme inline {
   --font-sans: "Source Sans Pro", var(--font-geist-sans);
@@ -126,5 +121,23 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer utilities {
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .animate-spin-slow {
+    animation: spin-slow 10s linear infinite;
+  }
+
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.02); }
+  }
+  .animate-pulse-slow {
+    animation: pulse-slow 3s infinite ease-in-out;
   }
 }

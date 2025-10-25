@@ -16,31 +16,34 @@ export function Navbar() {
   const pathname = usePathname()
 
   return (
-    <nav className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="border-b-4 border-neoDark bg-neoLight shadow-[8px_8px_0_0_#232323] dark:bg-neoDark dark:shadow-[8px_8px_0_0_#00FFFF]">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           {/* Logo */}
           <div className="flex-shrink-0">
-            <Link href="/" className="text-2xl font-serif font-bold text-primary">
+            <Link href="/" className="text-3xl font-playfair font-extrabold text-neoBlue dark:text-neoCyan tracking-wide">
               Kolamkar's
             </Link>
           </div>
 
           {/* Navigation Links */}
           <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-8">
+            <div className="ml-10 flex items-baseline space-x-6">
               {navigation.map((item) => (
                 <Link
                   key={item.name}
                   href={item.href}
                   className={cn(
-                    "px-3 py-2 text-sm font-medium transition-colors hover:text-primary",
+                    "relative px-4 py-2 rounded-full text-lg font-source-sans-pro font-semibold transition-all duration-300",
                     pathname === item.href
-                      ? "text-primary border-b-2 border-primary"
-                      : "text-muted-foreground hover:text-foreground",
+                      ? "bg-neoMagenta text-neoLight shadow-neoDark shadow-[4px_4px_0_0_#FFDB58] dark:bg-neoMustard dark:text-neoDark dark:shadow-neoCyan dark:shadow-[4px_4px_0_0_#007BFF]"
+                      : "text-neoDark hover:text-neoBlue dark:text-neoLight dark:hover:text-neoCyan hover:bg-neoLight/20 dark:hover:bg-neoDark/20",
                   )}
                 >
                   {item.name}
+                  {pathname === item.href && (
+                    <span className="absolute inset-0 border-2 border-neoDark dark:border-neoCyan rounded-full -z-10 animate-pulse-slow" />
+                  )}
                 </Link>
               ))}
             </div>
@@ -50,7 +53,7 @@ export function Navbar() {
           <div className="md:hidden">
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+              className="inline-flex items-center justify-center rounded-full p-2 text-neoDark hover:bg-neoLight/20 focus:outline-none focus:ring-4 focus:ring-neoBlue focus:ring-offset-2 dark:text-neoLight dark:hover:bg-neoDark/20 dark:focus:ring-neoCyan"
               aria-controls="mobile-menu"
               aria-expanded="false"
             >
